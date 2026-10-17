@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- 测试页放在 tools/ 下，用 base 让页面里的相对路径（data/…）都从站点根目录解析 -->
+<base href="/">
+<title>浏览器冒烟测试 · 日本語ラボ</title>
+<style>
+  body { font: 13px/1.55 ui-monospace, Consolas, monospace; margin: 12px; background: #fff; color: #111; }
+  h1 { font-size: 15px; } h2 { font-size: 13px; margin: 14px 0 6px; }
+  #view { border: 1px dashed #bbb; padding: 10px; margin-bottom: 14px; }
+  #report { white-space: pre-wrap; word-break: break-all; }
+  .P { color: #0a7d28; } .F { color: #c0392b; }
+</style>
+</head>
+<body>
+<h1>日本語ラボ · 浏览器冒烟测试（用真实视图模块 + 真实数据）</h1>
+<div id="view"></div>
+<h2>报告</h2>
+<pre id="report">running…</pre>
+
+<script>
+// ---- 语音识别桩：让测试可以在无人值守下验证口语评分与自评兜底 ----
+window.__srMode = "ok";     // ok | error
+window.__srText = "";
+class FakeSR {
+  constructor() { this.lang = ""; }
+  start() {
+    const self = this;
+    setTimeout(() => {
+      if (window.__srMode === "error") {
+        self.onerror && self.onerror({ error: "not-allowed" });
+      } else {
+        const t = window.__srText || "";
+        const alt = { transcript: t };
+        self.onresult && self.onresult({ results: [[alt, alt]] });
+      }
+    }, 40);
+  }
+  stop() {}
+  abort() {}
+}
+window.SpeechRecognition = FakeSR;
+window.webkitSpeechRecognition = FakeSR;
+</script>
+
+<script type="module">
+const report = { checks: [], stages: [], pages: [], notes: [] };
+const view = document.getElementById("view");
+const out = document.getElementById("report");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function check(name, ok, detail = "") {
+  report.checks.push(`${ok ? "PASS" : "FAIL"} ${name}${detail ? " :: " + detail : ""}`);
+  return ok;
+}
+const t = (el, sel) => ((el.querySelector(sel) || {}).textContent || "").replace(/\s+/g, " ").trim();
+
+// 结果可以 POST 给任意收集端（用 ?report=http://... 指定），便于无人值守跑 CI 式冒烟测试
+const REPORT_URL = new URLSearchParams(location.search).get("report");
+function send() {
+  if (!REPORT_URL) return;
+  try {
+    fetch(REPORT_URL, { method: "POST", mode: "no-cors", body: JSON.stringify(report) }).catch(() => {});
+  } catch { /* 忽略 */ }
+}
+function paint() {
+  const fails = report.checks.filter((c) => c.startsWith("FAIL")).length;
+  out.textContent = JSON.stringify(report, null, 1);
+  document.title = (fails ? `FAIL ${fails}` : "ALL PASS") + ` (${report.checks.length} 项)`;
+  send();
+}
+
+// 预置进度：解锁 N5 全部关卡，方便直接测听力/口语/综合
+function seedProgress() {
+  const raw = localStorage.getItem("jnl:v1");
+  const st = raw ? JSON.parse(raw) : {};
+  st.quest = st.quest || { xp: 0, stages: {}, achievements: {} };
+  for (const id of ["n5-vocab-1", "n5-vocab-2", "n5-vocab-3", "n5-kanji-1", "n5-grammar-1", "n5-grammar-2", "n5-speak-1", "n5-speak-2"]) {
+    st.quest.stages[id] = { stars: 2, best: 80, plays: 1, cleared: 1, last: "2026-10-17" };
+  }
+  localStorage.setItem("jnl:v1", JSON.stringify(st));
+}
+seedProgress();
+
+const { default: mountQuest } = await import("/assets/js/views/quest.js");
+const { default: mountHome } = await import("/assets/js/views/home.js");
+const { default: mountVocab } = await import("/assets/js/views/vocab.js");
+const { default: mountKanji } = await import("/assets/js/views/kanji.js");
+const { default: mountGrammar } = await import("/assets/js/views/grammar.js");
+const { default: mountCards } = await import("/assets/js/views/cards.js");
+const { default: mountStats } = await import("/assets/js/views/stats.js");
+const { default: mountKana } = await import("/assets/js/views/kana.js");
+
+/* ---------------- 1. 其他页面能否正常渲染 ---------------- */
+async function testPage(name, mountFn) {
+  const box = document.createElement("div");
+  view.replaceChildren(box);
+  let err = null;
+  let cleanup = null;
+  try {
+    cleanup = await mountFn(box);
+  } catch (e) {
+    err = String(e.message || e);
+  }
+  const text = box.textContent.replace(/\s+/g, " ").trim();
+  report.pages.push({ name, err, len: text.length, head: text.slice(0, 70) });
+  check(`页面「${name}」可渲染`, !err && text.length > 40, err || `${text.length} 字`);
+  if (typeof cleanup === "function") cleanup();
+  await sleep(150);
+}
+await testPage("首页", mountHome);
+await testPage("五十音", mountKana);
+await testPage("单词表", mountVocab);
+await testPage("汉字表", mountKanji);
+await testPage("语法表", mountGrammar);
+await testPage("闪卡", mountCards);
+await testPage("统计", mountStats);
+paint();
+
+/* ---------------- 2. 闯关：逐个关卡跑通 ---------------- */
+const choiceChecks = [];
+let voicePanelText = "";
+/**
+ * 跑一关。
+ * mode = "choice"：每题点第 pick 个选项
+ * mode = "speak"：先按 okMode 决定语音桩行为（识别成功 / 识别报错→自评）
+ */
+async function playStage(stageId, { mode = "choice", pick = 0, speakPlan = [] } = {}) {
+  const box = document.createElement("div");
+  view.replaceChildren(box);
+  const cleanup = await mountQuest(box);
+
+  const btn = box.querySelector(`[data-stage="${stageId}"]`);
+  if (!btn) {
+    check(`关卡 ${stageId} 存在于地图`, false);
+    cleanup && cleanup();
+    return;
+  }
+  check(`关卡 ${stageId} 已解锁`, !btn.disabled);
+  btn.click();
+  await sleep(2600);
+
+  if (box.textContent.includes("题目加载失败")) {
+    check(`关卡 ${stageId} 题目加载`, false, "数据加载失败");
+    cleanup && cleanup();
+    return;
+  }
+
+  const questions = [];
+  let speakIndex = 0;
+  for (let i = 0; i < 16; i++) {
+    if (!box.querySelector(".quest-card")) break;
+    const isSpeak = !!box.querySelector(".mic");
+    const isListen = !!box.querySelector(".listen-btn");
+    questions.push({
+      skill: t(box, ".skill-tag"),
+      kind: isSpeak ? "speak" : isListen ? "listen" : "choice",
+      prompt: (t(box, ".q-prompt") || "(听力题)").slice(0, 22),
+      sub: t(box, ".q-sub").slice(0, 18),
+      opts: [...box.querySelectorAll("[data-opt]")].map((o) => o.textContent.replace(/\s+/g, " ").trim().slice(0, 16)),
+      hearts: t(box, ".hearts"),
+      combo: t(box, ".combo"),
+    });
+
+    if (isSpeak) {
+      const plan = speakPlan[speakIndex++] || "self";
+      const kana = t(box, ".quest-target .kana-line");
+      const ja = t(box, ".quest-target .ja");
+      if (plan === "voice") {
+        window.__srMode = "ok";
+        window.__srText = kana || ja;
+        box.querySelector("#mic").click();
+        await sleep(900);
+        voicePanelText = t(box, "#feedback");
+        report.notes.push(
+          `[${stageId}] 语音识别路径 目标=${JSON.stringify(ja)} 桩返回=${JSON.stringify(window.__srText)} 面板=${JSON.stringify(voicePanelText.slice(0, 80))}`
+        );
+        const nx = box.querySelector("#next");
+        if (nx) { nx.click(); await sleep(500); }
+        continue;
+      } else {
+        // 连点麦克风触发两次失败，进入自评
+        window.__srMode = "error";
+        const micClicks = [];
+        for (let k = 0; k < 4 && !box.querySelector("#self-ok"); k++) {
+          const mic = box.querySelector("#mic");
+          if (!mic) { micClicks.push("无 #mic"); break; }
+          micClicks.push(mic.className);
+          mic.click();
+          await sleep(650);
+        }
+        const selfOk = box.querySelector("#self-ok");
+        if (selfOk) {
+          if (speakIndex <= 2) report.notes.push(`[${stageId}] 自评兜底出现（第 ${speakIndex} 题）：${t(box, ".feedback").slice(0, 50)}`);
+          selfOk.click();
+          await sleep(800);
+          continue;
+        }
+        report.notes.push(
+          `[${stageId}] 未进入自评模式（点击序列 ${JSON.stringify(micClicks)}）反馈HTML=${JSON.stringify(
+            (box.querySelector("#feedback")?.innerHTML || "").replace(/\s+/g, " ").slice(0, 120)
+          )}`
+        );
+      }
+      await sleep(300);
+      const nx = box.querySelector("#next");
+      if (nx) { nx.click(); await sleep(400); }
+      continue;
+    }
+
+    const opts = [...box.querySelectorAll("[data-opt]")];
+    if (opts.length) opts[Math.min(pick, opts.length - 1)].click();
+    await sleep(460);
+    const fb = box.querySelector(".feedback");
+    const fbText = fb ? fb.textContent.replace(/\s+/g, " ").trim() : "";
+    // 语义检查：被标为「正确」的选项文本，应该出现在解析里（解析含正确答案）
+    const marked = [...box.querySelectorAll("[data-opt]")].find((o) => o.className.includes("correct"));
+    if (marked) {
+      // 选项按钮里含键盘提示数字（.key），比对时要去掉
+      const oz = marked.textContent.replace(/^\s*\d+\s*/, "").replace(/\s+/g, " ").trim();
+      choiceChecks.push({ q: questions[questions.length - 1]?.prompt || "", correct: oz, ok: fbText.includes(oz), fb: fbText.slice(0, 60) });
+    }
+    if (fb) report.notes.push(`[${stageId}] 第${questions.length}题(${questions[questions.length - 1]?.kind}) ${fb.className} :: ${fbText.slice(0, 70)}`);
+    const next = box.querySelector("#next");
+    if (next) { next.click(); await sleep(440); } else { await sleep(980); }
+  }
+
+  const res = {
+    id: stageId,
+    questions,
+    result: {
+      h1: t(box, "h1"),
+      emoji: t(box, ".result-emoji"),
+      stars: t(box, ".stars.big"),
+      stats: [...box.querySelectorAll(".stat")].map((s) => s.textContent.replace(/\s+/g, " ").trim()),
+      rows: [...box.querySelectorAll("table.data tbody tr")].map((r) => r.textContent.replace(/\s+/g, " ").trim()),
+      badges: [...box.querySelectorAll(".big-badge")].map((b) => b.textContent.trim()),
+      buttons: [...box.querySelectorAll(".quest-result button")].map((b) => b.textContent.trim()),
+    },
+  };
+  report.stages.push(res);
+  cleanup && cleanup();
+  await sleep(300);
+  return res;
+}
+
+// 2.1 单词·认词（全选第一个选项 → 很快掉光血，正好验证失败结算页）
+const s1 = await playStage("n5-vocab-1", { mode: "choice", pick: 0 });
+check("单词关进入答题流程（≤10 题）", !!s1 && s1.questions.length >= 3 && s1.questions.length <= 10, s1 && String(s1.questions.length));
+check("单词关都是选择题（4 选项）", !!s1 && s1.questions.every((q) => q.kind === "choice" && q.opts.length === 4));
+check("单词关走到结算页", !!s1 && /闯关成功|生命值用完了/.test(s1.result.h1), s1 && s1.result.h1);
+check("失败结算页给出「重新挑战」", !!s1 && s1.result.buttons.includes("重新挑战"), s1 && s1.result.buttons.join("/"));
+check("掉血后爱心会变空", !!s1 && s1.questions.some((q) => q.hearts.includes("🖤")), s1 && s1.questions[1]?.hearts);
+check("选择题反馈带中文释义", report.notes.some((n) => /[一-龥]/.test(n)));
+paint();
+
+// 2.2 听力关：应有 🔊 大按钮 + 日语选项
+const s2 = await playStage("n5-vocab-3", { mode: "choice", pick: 0 });
+check("听力关进入答题流程（≤10 题）", !!s2 && s2.questions.length >= 3 && s2.questions.length <= 10, s2 && String(s2.questions.length));
+check("听力关都是听力题", !!s2 && s2.questions.every((q) => q.kind === "listen"));
+check("听力关技能标记为听力", !!s2 && s2.questions.every((q) => q.skill.includes("听力")), s2 && s2.questions[0]?.skill);
+check("听力关选项是日语单词", !!s2 && s2.questions.every((q) => q.opts.every((o) => /[ぁ-んァ-ヶ一-龥]/.test(o))), s2 && JSON.stringify(s2.questions[0]?.opts));
+paint();
+
+// 2.3 口语关：第 1 题走「识别成功」路径，其余走「识别失败 → 自评」
+const s3 = await playStage("n5-speak-1", { mode: "speak", speakPlan: ["voice", "self", "self", "self", "self", "self", "self", "self"] });
+check("口语关有 8 题", s3 && s3.questions.length === 8, s3 && String(s3.questions.length));
+check("口语关都是口语题", !!s3 && s3.questions.every((q) => q.kind === "speak"));
+check("口语关能通关", !!s3 && s3.result.h1.includes("闯关成功"), s3 && `${s3.result.h1} / ${s3.result.stars}`);
+check("满星口语关拿到三星", !!s3 && s3.result.stars === "★★★", s3 && s3.result.stars);
+check(
+  "识别通过后显示分数/星级/听到的内容",
+  /通过/.test(voicePanelText) && /★/.test(voicePanelText) && /我听到/.test(voicePanelText),
+  voicePanelText.slice(0, 80)
+);
+check("结算页列出各技能表现", !!s3 && s3.result.rows.length >= 1, s3 && JSON.stringify(s3.result.rows));
+paint();
+
+// 2.4 综合试炼：题目组成直接用引擎校验（不依赖这一局的手气），UI 侧只要求进入流程
+const engine = await import("/assets/js/quest-engine.js");
+const mixedQs = await engine.buildStage(engine.findStage("n5-mixed-1"));
+check("综合试炼正好 12 题", mixedQs.length === 12, String(mixedQs.length));
+check("综合试炼覆盖 4 种以上技能", new Set(mixedQs.map((q) => q.skill)).size >= 4, [...new Set(mixedQs.map((q) => q.skill))].join("/"));
+check("综合试炼含听力题", mixedQs.some((q) => q.type === "listen"));
+check("综合试炼含口语题", mixedQs.some((q) => q.type === "speak"));
+check("综合试炼每题都有解析", mixedQs.every((q) => (q.explain || "").length > 0));
+const s4 = await playStage("n5-mixed-1", { mode: "choice", pick: 1, speakPlan: ["self", "self", "self", "self", "self"] });
+check("综合试炼能进入答题流程", !!s4 && s4.questions.length >= 3, s4 && String(s4.questions.length));
+check("综合试炼会出现听力/口语题", !!s4 && s4.questions.some((q) => q.kind !== "choice"), s4 && JSON.stringify(s4.questions.map((q) => q.kind)));
+paint();
+
+/* ---------------- 3. 结果与页面标题 ---------------- */
+check(
+  `选择题的正解与解析一致（共 ${choiceChecks.length} 题）`,
+  choiceChecks.length > 0 && choiceChecks.every((c) => c.ok),
+  choiceChecks.filter((c) => !c.ok).slice(0, 3).map((c) => `${c.q} => ${c.correct}`).join(" | ")
+);
+report.choiceChecks = choiceChecks.slice(0, 10);
+report.summary = {
+  total: report.checks.length,
+  failed: report.checks.filter((c) => c.startsWith("FAIL")).length,
+};
+paint();
+</script>
+</body>
+</html>

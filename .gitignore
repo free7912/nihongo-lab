@@ -1,0 +1,23 @@
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# 依赖与构建产物（本项目零构建，通常不需要）
+node_modules/
+dist/
+build/
+.cache/
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+yarn-error.log*
+tmp/
+
+# 中文释义翻译的中间缓存（data/zh/*.json 是生成结果，会提交；缓存不提交）
+tools/.zh-cache.json
+tools/.zh-cache.json.tmp
