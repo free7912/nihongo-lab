@@ -47,12 +47,16 @@
 
 因为使用了 ES Module 和 `fetch` 读取 JSON，必须通过 HTTP 打开（不能直接双击 `index.html`）。
 
+**最省事：双击根目录的 `打开网站.bat`** —— 自动启动本地服务器并打开浏览器，
+关掉那个黑窗口就等于停止服务器；没装 Python 时会自动改为打开在线版。
+
 ```bash
 # 方式一：Python（Windows 自带 python 即可）
 cd nihongo-lab
 python -m http.server 8000
 # 或者用项目自带的免缓存开发服务器（推荐，改完代码刷新即生效）
 python tools/serve.py 8000
+python tools/serve.py --open       # 端口被占用会自动往后找一个，并自动开浏览器
 # 然后浏览器打开 http://localhost:8000
 
 # 方式二：VS Code 装 "Live Server" 插件，右键 index.html → Open with Live Server
@@ -179,6 +183,7 @@ nihongo-lab/
 │   ├── zh/                    # 构建时生成的中文释义（机器翻译）
 │   └── grammar-zh/            # 人工撰写的语法中文释义 / 讲解 / 中文句型名 / 例句中文
 ├── tools/                     # 开发脚本：serve.py / translate.py / pattern-zh.py / selftest.mjs / browser-test.html
+├── 打开网站.bat               # 双击即用的简易启动器（起本地服务器 + 开浏览器）
 └── vendor/openjlpt/           # 上游 LICENSE 与 NOTICE（遵守署名要求）
 ```
 
