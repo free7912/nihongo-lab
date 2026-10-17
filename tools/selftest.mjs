@@ -290,6 +290,46 @@ for (const lv of ["N5", "N4", "N3", "N2", "N1"]) {
 check("语法显示文本不含英文", shownEnglish.length === 0, shownEnglish.slice(0, 5).join(" | "));
 console.log(`  语法显示层：句型/接续/释义共 ${shownTotal} 条`);
 
+/* ---------------- 6d. 例句中文（逐条人工撰写，与源例句同序同级） ---------------- */
+section("例句中文");
+let exTotal = 0;
+let exMissing = 0;
+let exBadLen = 0;
+let exBadText = 0;
+const exBadSamples = [];
+for (const lv of ["N5", "N4", "N3", "N2", "N1"]) {
+  const [list, zhTable] = await Promise.all([dataMod.loadGrammar(lv), dataMod.loadGrammarZh(lv)]);
+  const ids = new Set(list.map((g) => g.id));
+  const orphan = Object.keys(zhTable).filter((id) => !ids.has(id));
+  if (orphan.length) {
+    exBadLen += 1;
+    exBadSamples.push(`${lv} 未知 id ${orphan.slice(0, 2).join(",")}`);
+  }
+  for (const g of list) {
+    const exs = g.examples || [];
+    const z = (zhTable[g.id] && zhTable[g.id].z) || [];
+    exTotal += exs.length;
+    if (exs.length !== z.length) {
+      exBadLen += 1;
+      exBadSamples.push(`${g.id} ${z.length}/${exs.length}`);
+    }
+    exs.forEach((_ex, i) => {
+      const cn = glossMod.exampleZh(g, zhTable, i);
+      if (!cn) {
+        exMissing += 1;
+        exBadSamples.push(`${g.id}#${i} 空`);
+      } else if (!/[\u4e00-\u9fff]/.test(cn) || /[A-Za-z]{3,}/.test(cn)) {
+        exBadText += 1;
+        exBadSamples.push(`${g.id}#${i} ${cn}`);
+      }
+    });
+  }
+}
+check("例句中文 1526 条全覆盖", exTotal === 1526 && exMissing === 0, `共 ${exTotal}，缺 ${exMissing}`);
+check("例句中文与源例句数量一致", exBadLen === 0, exBadSamples.slice(0, 3).join(" | "));
+check("例句中文都是中文", exBadText === 0, exBadSamples.slice(0, 3).join(" | "));
+console.log(`  例句中文：${exTotal} 条`);
+
 /* ---------------- 7. 所有视图模块可加载 ---------------- */
 section("模块加载");
 const modules = [

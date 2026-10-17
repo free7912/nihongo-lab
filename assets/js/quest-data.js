@@ -188,21 +188,22 @@ export function allSpeakItems() {
 export async function buildGrammarStage(level, index = 0) {
   const { loadGrammar, loadGrammarZh } = await import("./data.js");
   const { stripFurigana } = await import("./furigana.js");
-  const { grammarPattern } = await import("./gloss.js");
+  const { grammarPattern, exampleZh } = await import("./gloss.js");
   const [grammar, zhTable] = await Promise.all([loadGrammar(level), loadGrammarZh(level)]);
   const items = [];
   for (const g of grammar) {
-    for (const ex of g.examples || []) {
+    for (const [i, ex] of (g.examples || []).entries()) {
       const kana = readingOf(ex);
       if (!kana || kana.length < 5 || kana.length > 40) continue;
       const gz = zhTable[g.id]?.m || "";
       const pat = grammarPattern(g, zhTable);
+      const exZh = exampleZh(g, zhTable, i);
       items.push({
         ja: stripFurigana(ex.ja),
         kana,
         romaji: "",
-        // 跟读提示用中文：句型 + 人工中文释义（不用英文例句翻译）
-        zh: `句型「${pat}」${gz ? `：${gz}` : ""}`,
+        // 跟读提示用中文：优先显示例句的中文句义，缺译文时退回「句型 + 人工中文释义」
+        zh: exZh || `句型「${pat}」${gz ? `：${gz}` : ""}`,
         tip: `语法：${pat}`,
       });
       if (items.length >= 8) break;

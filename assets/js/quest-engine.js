@@ -5,7 +5,7 @@
 import { loadVocab, loadKanji, loadGrammar, loadZh, loadGrammarZh } from "./data.js";
 import { shuffle } from "./util.js";
 import { exampleRuby, examplePlain } from "./furigana.js";
-import { meaningsText, grammarText, grammarPattern, formationZh } from "./gloss.js";
+import { meaningsText, grammarText, grammarPattern, formationZh, exampleZh } from "./gloss.js";
 import { STAGES as SPEAK_STAGES, buildGrammarStage } from "./quest-data.js";
 
 export const LEVEL_ORDER = ["N5", "N4", "N3", "N2", "N1"];
@@ -250,15 +250,16 @@ async function buildGrammarLevelStage(stage) {
     } else {
       const ex = (g.examples || [])[0];
       if (!ex) return;
+      const exZh = exampleZh(g, gzh, 0);
       questions.push({
         id: `${stage.id}-${idx}`,
         type: "choice",
         skill: "grammar",
         promptHtml: `<span class="q-sentence">${exampleRuby(ex)}</span>`,
-        promptSubHtml: "这句话用了哪个句型？",
+        promptSubHtml: exZh ? `这句话用了哪个句型？（${exZh}）` : "这句话用了哪个句型？",
         speakText: examplePlain(ex),
         options: pickOptions(g, list, (x) => grammarPattern(x, gzh), seed),
-        explain: `例句用的是「${grammarPattern(g, gzh)}」（${meaning}）`,
+        explain: `例句用的是「${grammarPattern(g, gzh)}」（${meaning}）${exZh ? `　${exZh}` : ""}`,
       });
     }
   });
@@ -373,6 +374,7 @@ async function buildMixedStage(stage) {
   gItems.forEach((g, i) => {
     const ex = (g.examples || [])[0];
     const meaning = grammarText(g, zh, gzh);
+    const exZh = exampleZh(g, gzh, 0);
     questions.push({
       id: `${stage.id}-g${i}`,
       type: "choice",
@@ -380,7 +382,7 @@ async function buildMixedStage(stage) {
       promptHtml: ex
         ? `<span class="q-sentence">${exampleRuby(ex)}</span>`
         : `<span class="q-pattern">${grammarPattern(g, gzh)}</span>`,
-      promptSubHtml: ex ? "这句话用了哪个句型？" : "选出它的意思",
+      promptSubHtml: ex ? (exZh ? `这句话用了哪个句型？（${exZh}）` : "这句话用了哪个句型？") : "选出它的意思",
       speakText: ex ? examplePlain(ex) : g.pattern.replace(/[〜～]/g, ""),
       options: pickOptions(g, grammar, (x) => (ex ? grammarPattern(x, gzh) : grammarText(x, zh, gzh)), hashSeed(stage.id + "|g" + i)),
       explain: `${grammarPattern(g, gzh)}：${meaning}`,

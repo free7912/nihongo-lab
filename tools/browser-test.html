@@ -152,6 +152,17 @@ paint();
   check("点击句型可展开", items[0].classList.contains("open"));
   check("展开后显示中文讲解", !!items[0].querySelector(".g-note") && /[\u4e00-\u9fff]/.test(t(box, ".g-item.open .g-note")));
   check("展开后显示注音例句", !!items[0].querySelector(".g-body ruby"));
+  check(
+    "例句带中文句义",
+    items[0].querySelectorAll(".g-ex .ex-zh").length > 0 &&
+      [...items[0].querySelectorAll(".g-ex .ex-zh")].every((el) => /[\u4e00-\u9fff]/.test(el.textContent) && !/[A-Za-z]{3,}/.test(el.textContent)),
+    t(box, ".ex-zh")
+  );
+  check(
+    "每条例句都有中文对照",
+    items[0].querySelectorAll(".g-ex").length === items[0].querySelectorAll(".g-ex .ex-zh").length,
+    `${items[0].querySelectorAll(".g-ex").length} / ${items[0].querySelectorAll(".g-ex .ex-zh").length}`
+  );
   check("接续记法是中文", !/[A-Za-z]{2,}/.test(t(box, ".g-item.open .g-form")), t(box, ".g-item.open .g-form"));
   check("英文原文收进可折叠区", !!items[0].querySelector("details.g-en"));
 
@@ -390,6 +401,11 @@ check(
 check("语法例句题不出现英文提示", gqs.every((q) => !/[A-Za-z]{4,}/.test(q.promptSubHtml || "")), gqs[0]?.promptSubHtml);
 check("语法例句题解析是中文", gqs.every((q) => /[\u4e00-\u9fff]/.test(q.explain || "")));
 check(
+  "语法例句题带中文句义",
+  gqSentence.length > 0 && gqSentence.every((q) => /[\u4e00-\u9fff]/.test(q.promptSubHtml || "")),
+  gqSentence[0]?.promptSubHtml
+);
+check(
   "语法题的句型/选项都不含英文",
   gqs.every(
     (q) =>
@@ -413,6 +429,11 @@ const speakStage = await questData.buildGrammarStage("N5", 0);
 check(
   "语法跟读素材提示为中文",
   !speakStage || speakStage.items.every((it) => /[\u4e00-\u9fff]/.test(it.zh) && !/[A-Za-z]{3,}/.test(it.zh)),
+  speakStage?.items?.[0]?.zh
+);
+check(
+  "语法跟读提示改用例句中文句义",
+  !speakStage || speakStage.items.every((it) => !/^句型「/.test(it.zh)),
   speakStage?.items?.[0]?.zh
 );
 

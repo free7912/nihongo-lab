@@ -8,7 +8,8 @@
 // 语法是例外：它的 meaning 是一整句英文描述（"marks the topic of the sentence"），
 // 词典/机器翻译对这类片段几乎无效（会出现「凭直觉行动」这种离谱结果），
 // 所以 526 条语法释义全部人工写入 data/grammar-zh/*.json：
-//   { "wa": { "m": "提示主题（读作 wa）…", "n": "放在主题词后面…" }, ... }
+//   { "wa": { "z": ["我是学生。", …], "m": "提示主题（读作 wa）…", "n": "放在主题词后面…" }, ... }
+// 其中 z 是例句的逐条人工中文翻译（与源 examples[] 同序同级，共 1526 条）。
 // 按 id 索引，即使上游改了英文措辞也不会失效。
 import { stripFurigana } from "./furigana.js";
 import { loadZh } from "./data.js";
@@ -67,6 +68,18 @@ export function grammarPattern(g, gzh) {
   if (!g) return "";
   const entry = gzh && gzh[g.id];
   return (entry && entry.p) || g.pattern;
+}
+
+/**
+ * 例句中文：data/grammar-zh 的 z 数组与源 examples[] 同序同级，
+ * 1526 条全部人工逐条撰写。索引越界或没有译文时返回空字符串。
+ */
+export function exampleZh(g, gzh, i) {
+  const entry = g && gzh && gzh[g.id];
+  const arr = entry && entry.z;
+  if (!arr || !arr.length) return "";
+  const idx = Number.isInteger(i) && i >= 0 && i < arr.length ? i : -1;
+  return idx < 0 ? "" : arr[idx] || "";
 }
 
 // 接续记法是英文占位词：Noun + は、Verb-te + いる、i-Adj stem …

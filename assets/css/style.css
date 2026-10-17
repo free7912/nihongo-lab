@@ -503,7 +503,9 @@ nav.tabs a.active { background: linear-gradient(150deg, var(--indigo-soft), colo
 .g-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .92rem; }
 .g-examples { list-style: none; padding: 0; display: grid; gap: 6px; }
 .g-ex { display: flex; gap: 8px; align-items: flex-start; }
+.g-ex .ex-body { flex: 1; min-width: 0; }
 .g-ex .ja { margin: 0; font-family: var(--font-ja); font-size: 1.02rem; line-height: 1.95; }
+.g-ex .ex-zh { margin: 2px 0 0; font-size: .9rem; line-height: 1.6; color: var(--muted); }
 .g-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--border); }
 .g-en { font-size: .82rem; color: var(--muted); }
 .g-en summary { cursor: pointer; }

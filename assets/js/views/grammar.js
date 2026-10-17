@@ -2,13 +2,13 @@
 //
 // 数据说明：
 //   data/grammar/*.json        —— OpenJLPT 原始数据（英文释义、例句）
-//   data/grammar-zh/*.json     —— 逐条人工撰写的中文释义 / 讲解（按 id 索引）
+//   data/grammar-zh/*.json     —— 逐条人工撰写的中文释义 / 讲解 / 例句中文（按 id 索引）
 // 页面默认只显示中文；英文原文收进「英文原文对照」里，需要时再展开。
 import { loadGrammar, loadGrammarZh } from "../data.js";
 import { getSettings, setSetting, getState, toggleLearned } from "../store.js";
 import { escapeHtml, LEVELS } from "../util.js";
 import { exampleRuby, examplePlain } from "../furigana.js";
-import { grammarText, grammarNote, grammarPattern, formationZh, tagZh, hasZh } from "../gloss.js";
+import { grammarText, grammarNote, grammarPattern, formationZh, tagZh, hasZh, exampleZh } from "../gloss.js";
 
 const MAX_TAGS = 12;
 
@@ -61,7 +61,7 @@ export default async function mount(root) {
       g.meaning,
       ...(g.tags || []),
       ...(g.tags || []).map(tagZh),
-      ...(g.examples || []).flatMap((ex) => [examplePlain(ex), ex.ja, ex.en]),
+      ...(g.examples || []).flatMap((ex, i) => [examplePlain(ex), ex.ja, ex.en, exampleZh(g, gzh, i)]),
     ]
       .filter(Boolean)
       .join(" ")
@@ -97,13 +97,17 @@ export default async function mount(root) {
     const list = g.examples || [];
     if (!list.length) return `<p class="meta">暂无例句</p>`;
     return `<ul class="g-examples">${list
-      .map(
-        (ex) => `
+      .map((ex, i) => {
+        const cn = exampleZh(g, gzh, i);
+        return `
         <li class="g-ex">
           <button class="icon-btn" data-speak="${escapeHtml(examplePlain(ex))}" title="朗读例句">🔊</button>
-          <p class="ja">${exampleRuby(ex)}</p>
-        </li>`
-      )
+          <div class="ex-body">
+            <p class="ja">${exampleRuby(ex)}</p>
+            ${cn ? `<p class="ex-zh">${hl(cn, q)}</p>` : ""}
+          </div>
+        </li>`;
+      })
       .join("")}</ul>`;
   }
 
