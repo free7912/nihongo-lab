@@ -118,6 +118,96 @@ await testPage("闪卡", mountCards);
 await testPage("统计", mountStats);
 paint();
 
+/* ---------------- 1b. 语法页：中文释义 + 交互 ---------------- */
+{
+  const box = document.createElement("div");
+  view.replaceChildren(box);
+  const cleanup = await mountGrammar(box);
+  await sleep(700);
+  const text = () => box.textContent.replace(/\s+/g, " ");
+
+  check(
+    "语法页释义栏不出现英文",
+    [...box.querySelectorAll(".g-mean")].every((el) => !/[A-Za-z]{4,}/.test(el.textContent)),
+    t(box, ".g-mean")
+  );
+  check(
+    "语法页句型也不出现英文",
+    [...box.querySelectorAll(".g-pattern")].every((el) => !/[A-Za-z]{3,}/.test(el.textContent)),
+    t(box, ".g-pattern")
+  );
+  check("英文原文默认折叠", !!box.querySelector("details.g-en") && box.querySelectorAll("details.g-en[open]").length === 0);
+  check(
+    "读音栏只留读音、不带英文类别",
+    [...box.querySelectorAll(".g-romaji")].every((el) => !/[()]/.test(el.textContent)),
+    t(box, ".g-romaji")
+  );
+  check("语法页显示中文释义", text().includes("提示主题"));
+  const items = [...box.querySelectorAll(".g-item")];
+  check("语法页渲染句型卡片（N5 共 81 条）", items.length === 81, String(items.length));
+
+  const first = items[0].querySelector(".g-head");
+  first.click();
+  await sleep(400);
+  check("点击句型可展开", items[0].classList.contains("open"));
+  check("展开后显示中文讲解", !!items[0].querySelector(".g-note") && /[\u4e00-\u9fff]/.test(t(box, ".g-item.open .g-note")));
+  check("展开后显示注音例句", !!items[0].querySelector(".g-body ruby"));
+  check("接续记法是中文", !/[A-Za-z]{2,}/.test(t(box, ".g-item.open .g-form")), t(box, ".g-item.open .g-form"));
+  check("英文原文收进可折叠区", !!items[0].querySelector("details.g-en"));
+
+  const star = items[0].querySelector(".g-star");
+  star.click();
+  await sleep(150);
+  check("可以标记「已掌握」", items[0].querySelector(".g-star").classList.contains("on") && items[0].classList.contains("done"));
+  check("已掌握进度会累加", /1<small>\/81<\/small>|1\s*\/\s*81/.test(box.querySelector(".g-meter-num").innerHTML), box.querySelector(".g-meter-num").textContent);
+
+  const q = box.querySelector("#q");
+  q.value = "在…（具体时间点）";
+  q.dispatchEvent(new Event("input", { bubbles: true }));
+  await sleep(250);
+  const hit = [...box.querySelectorAll(".g-item")];
+  check("中文搜索能过滤句型", hit.length > 0 && hit.length < 81, `命中 ${hit.length}`);
+  check("搜索关键词高亮", !!box.querySelector("mark"));
+
+  const clear = box.querySelector("[data-clear]");
+  clear.click();
+  await sleep(250);
+  check("清除筛选恢复全部", box.querySelectorAll(".g-item").length === 81);
+
+  const rnd = box.querySelector("#random-btn");
+  rnd.click();
+  await sleep(350);
+  check("随机抽查展开且只展开一条", box.querySelectorAll(".g-item.open").length === 1);
+
+  const tag = box.querySelector("[data-tag]");
+  if (tag) {
+    const label = tag.textContent.replace(/\d+$/, "").trim();
+    tag.click();
+    await sleep(250);
+    check("标签筛选生效", box.querySelectorAll(".g-item").length < 81 && box.querySelector(".chip.active") !== null, `标签 ${label}`);
+  }
+
+  const clear2 = box.querySelector("[data-clear]");
+  if (clear2) {
+    clear2.click();
+    await sleep(250);
+  }
+  const total = box.querySelectorAll(".g-item").length;
+  const mastered = box.querySelectorAll(".g-star.on").length;
+  const only = box.querySelector("[data-only]");
+  only.click();
+  await sleep(250);
+  check(
+    "「只看未掌握」生效",
+    mastered === 1 && box.querySelectorAll(".g-item").length === total - mastered,
+    `${box.querySelectorAll(".g-item").length} / 期望 ${total - mastered}`
+  );
+
+  if (typeof cleanup === "function") cleanup();
+  await sleep(150);
+}
+paint();
+
 /* ---------------- 2. 闯关：逐个关卡跑通 ---------------- */
 const choiceChecks = [];
 let voicePanelText = "";
@@ -285,6 +375,47 @@ check("综合试炼覆盖 4 种以上技能", new Set(mixedQs.map((q) => q.skill
 check("综合试炼含听力题", mixedQs.some((q) => q.type === "listen"));
 check("综合试炼含口语题", mixedQs.some((q) => q.type === "speak"));
 check("综合试炼每题都有解析", mixedQs.every((q) => (q.explain || "").length > 0));
+
+// 2.5 语法例句题：必须带注音，且提示是中文（不能是英文例句）
+const gqs = await engine.buildStage(engine.findStage("n5-grammar-2"));
+const gqSentence = gqs.filter((q) => (q.promptHtml || "").includes("q-sentence"));
+check(
+  "语法例句题：含汉字的句子都有注音",
+  gqSentence.length > 0 &&
+    gqSentence.every(
+      (q) => !/[\u4e00-\u9fff]/.test(q.promptHtml.replace(/<[^>]+>/g, "")) || q.promptHtml.includes("<ruby>")
+    ),
+  `${gqSentence.filter((q) => q.promptHtml.includes("<ruby>")).length}/${gqSentence.length} 带注音`
+);
+check("语法例句题不出现英文提示", gqs.every((q) => !/[A-Za-z]{4,}/.test(q.promptSubHtml || "")), gqs[0]?.promptSubHtml);
+check("语法例句题解析是中文", gqs.every((q) => /[\u4e00-\u9fff]/.test(q.explain || "")));
+check(
+  "语法题的句型/选项都不含英文",
+  gqs.every(
+    (q) =>
+      !/[A-Za-z]{3,}/.test((q.promptHtml || "").replace(/<[^>]+>/g, "")) &&
+      (q.options || []).every((o) => !/[A-Za-z]{3,}/.test(o.text))
+  ),
+  gqs
+    .filter(
+      (q) =>
+        /[A-Za-z]{3,}/.test((q.promptHtml || "").replace(/<[^>]+>/g, "")) ||
+        (q.options || []).some((o) => /[A-Za-z]{3,}/.test(o.text))
+    )
+    .slice(0, 1)
+    .map((q) => `${(q.promptHtml || "").replace(/<[^>]+>/g, "")} | ${(q.options || []).map((o) => o.text).join(" / ")}`)
+    .join("")
+);
+
+// 口语跟读素材：提示也要是中文（句型标签可能带英文小括号，必须已中文化）
+const questData = await import("/assets/js/quest-data.js");
+const speakStage = await questData.buildGrammarStage("N5", 0);
+check(
+  "语法跟读素材提示为中文",
+  !speakStage || speakStage.items.every((it) => /[\u4e00-\u9fff]/.test(it.zh) && !/[A-Za-z]{3,}/.test(it.zh)),
+  speakStage?.items?.[0]?.zh
+);
+
 const s4 = await playStage("n5-mixed-1", { mode: "choice", pick: 1, speakPlan: ["self", "self", "self", "self", "self"] });
 check("综合试炼能进入答题流程", !!s4 && s4.questions.length >= 3, s4 && String(s4.questions.length));
 check("综合试炼会出现听力/口语题", !!s4 && s4.questions.some((q) => q.kind !== "choice"), s4 && JSON.stringify(s4.questions.map((q) => q.kind)));

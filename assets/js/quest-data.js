@@ -186,20 +186,24 @@ export function allSpeakItems() {
 
 /** 用语法数据自动生成「例句跟读」关卡（每关 8 句） */
 export async function buildGrammarStage(level, index = 0) {
-  const { loadGrammar } = await import("./data.js");
+  const { loadGrammar, loadGrammarZh } = await import("./data.js");
   const { stripFurigana } = await import("./furigana.js");
-  const grammar = await loadGrammar(level);
+  const { grammarPattern } = await import("./gloss.js");
+  const [grammar, zhTable] = await Promise.all([loadGrammar(level), loadGrammarZh(level)]);
   const items = [];
   for (const g of grammar) {
     for (const ex of g.examples || []) {
       const kana = readingOf(ex);
       if (!kana || kana.length < 5 || kana.length > 40) continue;
+      const gz = zhTable[g.id]?.m || "";
+      const pat = grammarPattern(g, zhTable);
       items.push({
         ja: stripFurigana(ex.ja),
         kana,
         romaji: "",
-        zh: ex.en ? `（英文）${ex.en}` : g.meaning || "",
-        tip: `语法：${g.pattern}`,
+        // 跟读提示用中文：句型 + 人工中文释义（不用英文例句翻译）
+        zh: `句型「${pat}」${gz ? `：${gz}` : ""}`,
+        tip: `语法：${pat}`,
       });
       if (items.length >= 8) break;
     }

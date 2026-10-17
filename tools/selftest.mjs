@@ -222,6 +222,74 @@ if (zhKeys.length) {
   console.log(`  N5 中文释义：${zhKeys.length} 条，例：${zhKeys[0]} -> ${zhN5[zhKeys[0]]}`);
 }
 
+/* ---------------- 6b. 语法中文（逐条人工撰写） ---------------- */
+section("语法中文");
+const dataMod = await import("../assets/js/data.js");
+let grammarZhTotal = 0;
+let grammarZhMissing = 0;
+for (const lv of ["N5", "N4", "N3", "N2", "N1"]) {
+  const [list, zhTable] = await Promise.all([dataMod.loadGrammar(lv), dataMod.loadGrammarZh(lv)]);
+  const missing = list.filter((g) => !(zhTable[g.id] && zhTable[g.id].m));
+  grammarZhTotal += list.length;
+  grammarZhMissing += missing.length;
+  check(`${lv} 语法中文 100% 覆盖`, missing.length === 0, `缺 ${missing.length}：${missing.slice(0, 3).map((g) => g.id).join(",")}`);
+
+  const bad = Object.entries(zhTable).filter(([, v]) => !/[\u4e00-\u9fff]/.test(v.m || "") || v.m.length > 40);
+  check(`${lv} 语法中文格式正常`, bad.length === 0, bad.slice(0, 2).map(([id, v]) => `${id}:${v.m}`).join(" | "));
+
+  // 同等级内释义不能重复，否则选择题会出现两个一模一样的选项
+  const seen = new Map();
+  const dup = [];
+  for (const [id, v] of Object.entries(zhTable)) {
+    if (seen.has(v.m)) dup.push(v.m);
+    else seen.set(v.m, id);
+  }
+  check(`${lv} 语法释义无重复`, dup.length === 0, dup.slice(0, 2).join(" | "));
+
+  // 例句里的英文不能出现在默认显示文本中（页面把英文收进 details）
+  const noteBad = Object.values(zhTable).filter((v) => v.n && /[A-Za-z]{4,}\s+[A-Za-z]{3,}/.test(v.n));
+  check(`${lv} 讲解文字是中文`, noteBad.length === 0, String(noteBad.length));
+}
+check("语法中文总量 526 条", grammarZhTotal === 526, String(grammarZhTotal));
+check("语法中文零缺口", grammarZhMissing === 0, String(grammarZhMissing));
+
+// 闯关里的语法题也必须落到中文
+let grammarQuestions = 0;
+let grammarEnglishLeak = 0;
+for (const lv of ["N5", "N4", "N3", "N2", "N1"]) {
+  for (const stage of engine.chapterPlan(lv).filter((s) => s.kind === "grammar")) {
+    for (const q of await engine.buildStage(stage)) {
+      grammarQuestions += 1;
+      // 解析必须带中文
+      if (!/[\u4e00-\u9fff]/.test(q.explain || "")) grammarEnglishLeak += 1;
+      // 「看句型选意思」题的四个选项都必须是中文
+      const isMeaningPrompt = /q-pattern/.test(q.promptHtml || "");
+      if (isMeaningPrompt && !(q.options || []).every((o) => /[\u4e00-\u9fff]/.test(o.text))) grammarEnglishLeak += 1;
+    }
+  }
+}
+check("语法关题目全部含中文", grammarQuestions > 0 && grammarEnglishLeak === 0, `共 ${grammarQuestions} 题，异常 ${grammarEnglishLeak}`);
+console.log(`  语法中文：${grammarZhTotal} 条，闯关语法题 ${grammarQuestions} 题`);
+
+/* ---------------- 6c. 语法显示层全中文（句型 / 接续 / 释义） ---------------- */
+section("语法显示层");
+const shownEnglish = [];
+let shownTotal = 0;
+for (const lv of ["N5", "N4", "N3", "N2", "N1"]) {
+  const [list, zhTable] = await Promise.all([dataMod.loadGrammar(lv), dataMod.loadGrammarZh(lv)]);
+  for (const g of list) {
+    shownTotal += 1;
+    const pat = glossMod.grammarPattern(g, zhTable);
+    const form = glossMod.formationZh(g.formation);
+    const mean = glossMod.grammarText(g, {}, zhTable);
+    if (/[A-Za-z]{2,}/.test(pat)) shownEnglish.push(`${lv} 句型「${pat}」`);
+    if (/[A-Za-z]{2,}/.test(form)) shownEnglish.push(`${lv} 接续「${form}」`);
+    if (/[A-Za-z]{4,}/.test(mean)) shownEnglish.push(`${lv} 释义「${mean}」`);
+  }
+}
+check("语法显示文本不含英文", shownEnglish.length === 0, shownEnglish.slice(0, 5).join(" | "));
+console.log(`  语法显示层：句型/接续/释义共 ${shownTotal} 条`);
+
 /* ---------------- 7. 所有视图模块可加载 ---------------- */
 section("模块加载");
 const modules = [

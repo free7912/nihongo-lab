@@ -21,3 +21,7 @@ tmp/
 # 中文释义翻译的中间缓存（data/zh/*.json 是生成结果，会提交；缓存不提交）
 tools/.zh-cache.json
 tools/.zh-cache.json.tmp
+
+# Python 缓存
+__pycache__/
+*.pyc

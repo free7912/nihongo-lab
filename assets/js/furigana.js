@@ -13,14 +13,24 @@ export function stripFurigana(text) {
   return String(text || "").replace(/\{([^{}|]+)\|[^{}]+\}/g, "$1");
 }
 
+/** 例句注音文本：数据里 `ja` 是纯文本，`furigana` 才带 {漢字|かんじ} 标记 */
+export function exampleRuby(ex) {
+  return renderFurigana((ex && (ex.furigana || ex.ja)) || "");
+}
+
+/** 例句纯文本（用来朗读 / 搜索） */
+export function examplePlain(ex) {
+  return stripFurigana((ex && (ex.furigana || ex.ja)) || "");
+}
+
 /** 带朗读按钮的例句行 */
 export function exampleLine(ex) {
-  const plain = stripFurigana(ex.ja);
+  const plain = examplePlain(ex);
   return `
     <li class="example">
       <button class="icon-btn" data-speak="${escapeHtml(plain)}" title="朗读">🔊</button>
       <div>
-        <p class="ja">${renderFurigana(ex.ja)}</p>
+        <p class="ja">${exampleRuby(ex)}</p>
         ${ex.en ? `<p class="en">${escapeHtml(ex.en)}</p>` : ""}
       </div>
     </li>`;

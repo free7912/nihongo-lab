@@ -2,10 +2,10 @@
 //
 // 每关都由数据自动生成题目（同一关每次进入题目相同、选项顺序会变），
 // 口语关另用原创的跟读素材 + 语法例句。
-import { loadVocab, loadKanji, loadGrammar, loadZh } from "./data.js";
+import { loadVocab, loadKanji, loadGrammar, loadZh, loadGrammarZh } from "./data.js";
 import { shuffle } from "./util.js";
-import { renderFurigana, stripFurigana } from "./furigana.js";
-import { meaningsText, grammarText } from "./gloss.js";
+import { exampleRuby, examplePlain } from "./furigana.js";
+import { meaningsText, grammarText, grammarPattern, formationZh } from "./gloss.js";
 import { STAGES as SPEAK_STAGES, buildGrammarStage } from "./quest-data.js";
 
 export const LEVEL_ORDER = ["N5", "N4", "N3", "N2", "N1"];
@@ -218,33 +218,34 @@ async function buildKanjiStage(stage) {
 }
 
 async function buildGrammarLevelStage(stage) {
-  const [list, zh] = await Promise.all([loadGrammar(stage.level), loadZh(stage.level)]);
+  const [list, zh, gzh] = await Promise.all([loadGrammar(stage.level), loadZh(stage.level), loadGrammarZh(stage.level)]);
   const ordered = seededShuffle(list, hashSeed(stage.level + "|grammar"));
   const items = ordered.slice((stage.seq - 1) * stage.count, (stage.seq - 1) * stage.count + stage.count);
   const questions = [];
   items.forEach((g, idx) => {
     const seed = hashSeed(stage.id + "|" + idx);
     const type = stage.types.length === 1 ? stage.types[0] : stage.types[idx % stage.types.length];
+    const meaning = grammarText(g, zh, gzh);
     if (type === "grammar-meaning") {
       questions.push({
         id: `${stage.id}-${idx}`,
         type: "choice",
         skill: "grammar",
-        promptHtml: `<span class="q-pattern">${g.pattern}</span>`,
-        promptSubHtml: g.formation ? `接续：${stripFurigana(g.formation)}` : "",
+        promptHtml: `<span class="q-pattern">${grammarPattern(g, gzh)}</span>`,
+        promptSubHtml: g.formation ? `接续：${formationZh(g.formation)}` : "",
         speakText: g.pattern.replace(/[〜～]/g, ""),
-        options: pickOptions(g, list, (x) => grammarText(x, zh), seed),
-        explain: `${g.pattern}：${grammarText(g, zh)}`,
+        options: pickOptions(g, list, (x) => grammarText(x, zh, gzh), seed),
+        explain: `${grammarPattern(g, gzh)}：${meaning}`,
       });
     } else if (type === "grammar-pick") {
       questions.push({
         id: `${stage.id}-${idx}`,
         type: "choice",
         skill: "grammar",
-        promptHtml: `<span class="q-meaning">${grammarText(g, zh)}</span>`,
+        promptHtml: `<span class="q-meaning">${meaning}</span>`,
         promptSubHtml: "选出对应的句型",
-        options: pickOptions(g, list, (x) => x.pattern, seed),
-        explain: `${g.pattern}：${grammarText(g, zh)}`,
+        options: pickOptions(g, list, (x) => grammarPattern(x, gzh), seed),
+        explain: `${grammarPattern(g, gzh)}：${meaning}`,
       });
     } else {
       const ex = (g.examples || [])[0];
@@ -253,11 +254,11 @@ async function buildGrammarLevelStage(stage) {
         id: `${stage.id}-${idx}`,
         type: "choice",
         skill: "grammar",
-        promptHtml: `<span class="q-sentence">${renderFurigana(ex.ja)}</span>`,
-        promptSubHtml: ex.en || "",
-        speakText: stripFurigana(ex.ja),
-        options: pickOptions(g, list, (x) => x.pattern, seed),
-        explain: `例句用的是「${g.pattern}」（${grammarText(g, zh)}）`,
+        promptHtml: `<span class="q-sentence">${exampleRuby(ex)}</span>`,
+        promptSubHtml: "这句话用了哪个句型？",
+        speakText: examplePlain(ex),
+        options: pickOptions(g, list, (x) => grammarPattern(x, gzh), seed),
+        explain: `例句用的是「${grammarPattern(g, gzh)}」（${meaning}）`,
       });
     }
   });
@@ -304,11 +305,12 @@ async function buildSpeakStage(stage) {
 }
 
 async function buildMixedStage(stage) {
-  const [vocab, kanji, grammar, zh] = await Promise.all([
+  const [vocab, kanji, grammar, zh, gzh] = await Promise.all([
     loadVocab(stage.level),
     loadKanji(stage.level),
     loadGrammar(stage.level),
     loadZh(stage.level),
+    loadGrammarZh(stage.level),
   ]);
   const vSeed = hashSeed(stage.id + "|v");
   const kSeed = hashSeed(stage.id + "|k");
@@ -370,17 +372,18 @@ async function buildMixedStage(stage) {
 
   gItems.forEach((g, i) => {
     const ex = (g.examples || [])[0];
+    const meaning = grammarText(g, zh, gzh);
     questions.push({
       id: `${stage.id}-g${i}`,
       type: "choice",
       skill: "grammar",
       promptHtml: ex
-        ? `<span class="q-sentence">${renderFurigana(ex.ja)}</span>`
-        : `<span class="q-pattern">${g.pattern}</span>`,
+        ? `<span class="q-sentence">${exampleRuby(ex)}</span>`
+        : `<span class="q-pattern">${grammarPattern(g, gzh)}</span>`,
       promptSubHtml: ex ? "这句话用了哪个句型？" : "选出它的意思",
-      speakText: ex ? stripFurigana(ex.ja) : g.pattern.replace(/[〜～]/g, ""),
-      options: pickOptions(g, grammar, (x) => (ex ? x.pattern : grammarText(x, zh)), hashSeed(stage.id + "|g" + i)),
-      explain: `${g.pattern}：${grammarText(g, zh)}`,
+      speakText: ex ? examplePlain(ex) : g.pattern.replace(/[〜～]/g, ""),
+      options: pickOptions(g, grammar, (x) => (ex ? grammarPattern(x, gzh) : grammarText(x, zh, gzh)), hashSeed(stage.id + "|g" + i)),
+      explain: `${grammarPattern(g, gzh)}：${meaning}`,
     });
   });
 

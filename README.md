@@ -39,7 +39,7 @@
 | 假名测验 | 看假名选罗马字 / 看罗马字选假名，可选范围、题数，答错自动记录，也给经验 |
 | 单词 | JLPT N5–N1 共 7811 词，中文释义 + 英文对照，可搜索、标记掌握、加入复习队列、例句朗读 |
 | 汉字 | N5–N1 共 2383 字，音读/训读/名乘/部首/笔画数/频率，可朗读 |
-| 语法 | N5–N1 共 526 条句型，中文释义 + 接续 + 带注音的例句 |
+| 语法 | N5–N1 共 526 条句型，**人工撰写的中文释义 + 一句话讲解**，接续记法也中文化，例句带注音可朗读；支持搜索 / 标签筛选 / 已掌握标记 / 随机抽查 |
 | 闪卡复习 | 类 SM-2 间隔重复：忘记 / 困难 / 记得 / 简单，键盘 `空格` 翻面、`1`–`4` 评分，也给经验 |
 | 统计 | 等级、星星、综合水平分、闯关路线进度、正确率、分级进度、导出/清空进度 |
 
@@ -115,6 +115,25 @@ python tools/translate.py --normalize # 不联网，只整理已有缓存并重�
 - 约 89% 的释义有中文；剩余的多是长句/罕见搭配，会自动回退显示英文原文（页面不会报错）。
 - 译文来自公开词典接口，**属于机器翻译，个别词条可能不准确**；想手工修正就写进 `tools/zh-overrides.json` 再跑一次脚本。
 
+### 语法释义：人工撰写，不走机器翻译
+
+语法条的 `meaning` 不是词条，而是一整句英文描述（`"marks the topic of the sentence"`），
+词典接口对这类片段基本无效（会出现「凭直觉行动」这种离谱译文），所以：
+
+- **526 条语法释义 + 一句话讲解全部人工写成中文**，放在 `data/grammar-zh/n5.json` ~ `n1.json`：
+  ```json
+  {
+    "wa": { "m": "提示主题（读作 wa）：至于…；说起…", "n": "放在主题词后面，说明「关于这个人／这件事」怎么样。" },
+    "ni-time": { "p": "〜に（时间）", "m": "在…（具体时间点）", "n": "7時に起きる。相对时间词（今天／明天）不加に。" }
+  }
+  ```
+  - `m` = 中文释义（必填），`n` = 一句话讲解，`p` = 句型的中文显示名（只有上游自带英文小括号的 44 条需要）。
+  - 按 `id` 关联，即使以后上游改了英文措辞也不会失效；缺条目时页面自动回退英文原文。
+- `tools/pattern-zh.py` 校验这 44 个英文句型标签都有对应的 `p`，并把结果写回 `data/grammar-zh/`。
+- 接续记法（`Noun + は`、`Verb-te + いる`）在 `assets/js/gloss.js` 的 `formationZh()` 里做词替换 → `名词 ＋ は`。
+- 例句的英文翻译**没有**机翻（接口对整句只有约 60% 成功率），默认隐藏在「英文原文对照」折叠区里，
+  页面默认只显示日文例句 + 注音。
+
 ## 部署到 GitHub Pages
 
 1. 把仓库推到 GitHub（分支 `main`）。
@@ -147,8 +166,9 @@ nihongo-lab/
 │       ├── kana-data.js       # 五十音数据（原创）
 │       └── views/             # 各页面（home / quest / kana / quiz / vocab / kanji / grammar / cards / stats）
 ├── data/                      # OpenJLPT 题库（vocab / kanji / grammar，N5–N1）
-│   └── zh/                    # 构建时生成的中文释义
-├── tools/                     # 开发脚本：serve.py / translate.py / selftest.mjs / browser-test.html
+│   ├── zh/                    # 构建时生成的中文释义（机器翻译）
+│   └── grammar-zh/            # 人工撰写的语法中文释义 / 讲解 / 中文句型名
+├── tools/                     # 开发脚本：serve.py / translate.py / pattern-zh.py / selftest.mjs / browser-test.html
 └── vendor/openjlpt/           # 上游 LICENSE 与 NOTICE（遵守署名要求）
 ```
 
@@ -157,7 +177,7 @@ nihongo-lab/
 - **代码**：MIT（见 `LICENSE`）。
 - **题库**：来自 [OpenJLPT](https://github.com/evanclan/OpenJLPT)，CC BY-SA 4.0，
   上游为 JMdict、KANJIDIC2（EDRDG）、Jonathan Waller 的 JLPT 词表、Tatoeba。
-  详见 `ATTRIBUTION.md`。**分发修改后的数据（含 `data/zh/` 译文）必须同样以 CC BY-SA 4.0 发布并署名。**
+  详见 `ATTRIBUTION.md`。**分发修改后的数据（含 `data/zh/` 与 `data/grammar-zh/` 的中文衍生内容）必须同样以 CC BY-SA 4.0 发布并署名。**
 - 五十音数据、闯关编排、原创口语素材、成就与音效均为本项目原创。
 
 ## 后续可做
@@ -166,5 +186,6 @@ nihongo-lab/
 - [ ] 假名手写识别 / 书写练习
 - [ ] 每日学习目标与提醒、连续打卡奖励
 - [ ] 语法填空（自动挖空例句中的助词）
+- [ ] 语法例句的人工中文翻译（目前默认只显示日文 + 注音，英文收在折叠区里）
 - [ ] 听力专项（JLPT 听力模拟题）
 - [ ] 学习进度云端同步（需后端或 GitHub Gist）

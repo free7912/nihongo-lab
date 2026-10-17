@@ -46,6 +46,15 @@ export async function loadZh(level) {
   }
 }
 
+/** 语法逐条中文释义（人工撰写，随仓库发布）；缺文件时返回空表 */
+export async function loadGrammarZh(level) {
+  try {
+    return await loadJson(`data/grammar-zh/${lv(level)}.json`);
+  } catch {
+    return {};
+  }
+}
+
 /** 全等级合并（首次使用较慢，之后走缓存） */
 export async function loadAll(kind) {
   const { LEVELS } = await import("./util.js");
