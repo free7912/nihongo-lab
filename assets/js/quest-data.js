@@ -193,7 +193,7 @@ export async function buildGrammarStage(level, index = 0) {
   const items = [];
   for (const g of grammar) {
     for (const [i, ex] of (g.examples || []).entries()) {
-      const kana = readingOf(ex);
+      const kana = exampleReading(ex);
       if (!kana || kana.length < 5 || kana.length > 40) continue;
       const gz = zhTable[g.id]?.m || "";
       const pat = grammarPattern(g, zhTable);
@@ -222,8 +222,8 @@ export async function buildGrammarStage(level, index = 0) {
   };
 }
 
-/** 从 {漢字|かんじ} 标记里取出纯假名读法 */
-function readingOf(ex) {
+/** 从 {漢字|かんじ} 标记里取出纯假名读法（跟读、评分都用它） */
+export function exampleReading(ex) {
   if (!ex?.ja) return "";
   if (!ex.furigana) return String(ex.ja).replace(/[。、！？]/g, "");
   return String(ex.furigana)

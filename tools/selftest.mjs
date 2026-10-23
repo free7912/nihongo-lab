@@ -48,8 +48,14 @@ function makeEl(tag = "div") {
     value: "",
   };
 }
-globalThis.window = { addEventListener: noop, removeEventListener: noop, scrollTo: noop };
+globalThis.window = {
+  addEventListener: noop,
+  removeEventListener: noop,
+  scrollTo: noop,
+  matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+};
 globalThis.document = {
+  documentElement: makeEl("html"),
   getElementById: () => makeEl(),
   createElement: (t) => makeEl(t),
   addEventListener: noop,
@@ -330,12 +336,101 @@ check("例句中文与源例句数量一致", exBadLen === 0, exBadSamples.slice
 check("例句中文都是中文", exBadText === 0, exBadSamples.slice(0, 3).join(" | "));
 console.log(`  例句中文：${exTotal} 条`);
 
+/* ---------------- 6e. 影子跟读素材 ---------------- */
+section("影子跟读素材");
+const shadowData = await import("../assets/js/shadow-data.js");
+const recMod = await import("../assets/js/recorder.js");
+let shadowTotal = 0;
+let shadowBundleN5 = null;
+for (const lv of ["N5", "N4", "N3", "N2", "N1"]) {
+  const bundle = await shadowData.shadowItems(lv);
+  if (lv === "N5") shadowBundleN5 = bundle;
+  const all = bundle.all;
+  shadowTotal += all.length;
+  check(`${lv} 跟读素材非空`, all.length > 0, String(all.length));
+  check(
+    `${lv} 跟读素材字段完整`,
+    all.every((it) => it.id && it.ja && it.kana && it.zh && it.ruby && it.source),
+    all.filter((it) => !(it.id && it.ja && it.kana && it.zh && it.ruby)).slice(0, 2).map((i) => i.id).join(",")
+  );
+  check(
+    `${lv} 假名读法只含假名`,
+    all.every((it) => !/[A-Za-z]/.test(it.kana) && /[ぁ-んァ-ヶー]/.test(it.kana)),
+    all.filter((it) => /[A-Za-z]/.test(it.kana)).slice(0, 2).map((i) => i.kana).join(" | ")
+  );
+  check(
+    `${lv} 跟读提示含中文或数字`,
+    all.every((it) => /[\u4e00-\u9fff]|\d/.test(it.zh)),
+    all
+      .filter((it) => !/[\u4e00-\u9fff]|\d/.test(it.zh))
+      .slice(0, 3)
+      .map((i) => `${i.id}=${JSON.stringify(i.zh)}`)
+      .join(" | ")
+  );
+  check(
+    `${lv} 跟读提示没有英文`,
+    all.every((it) => !/[A-Za-z]{3,}/.test(it.zh)),
+    all
+      .filter((it) => /[A-Za-z]{3,}/.test(it.zh))
+      .slice(0, 3)
+      .map((i) => `${i.id}=${i.zh}`)
+      .join(" | ")
+  );
+  check(`${lv} 跟读素材 id 唯一`, new Set(all.map((i) => i.id)).size === all.length);
+  check(`${lv} 每句都有拍数`, all.every((it) => it.mora > 0));
+  console.log(
+    `  ${lv}: 常用句 ${bundle.phrase.length} · 例句 ${bundle.example.length} · 去重后 ${all.length}`
+  );
+}
+check("跟读素材总量够练", shadowTotal > 1000, String(shadowTotal));
+check("五级都有素材", ["N5", "N4", "N3", "N2", "N1"].length === 5 && shadowTotal > 0);
+
+const picked = shadowData.pickSet(shadowBundleN5.all, 10);
+check("pickSet 取 10 句", picked.length === 10, String(picked.length));
+check("pickSet 不重复", new Set(picked.map((i) => i.id)).size === picked.length);
+check(
+  "按来源筛选生效",
+  shadowData.poolOf(shadowBundleN5, "phrase").every((i) => i.source === "phrase") &&
+    shadowData.poolOf(shadowBundleN5, "example").every((i) => i.source === "example"),
+  `${shadowData.poolOf(shadowBundleN5, "phrase").length} / ${shadowData.poolOf(shadowBundleN5, "example").length}`
+);
+
+section("录音工具");
+check("拗音不算独立拍", recMod.moraCount("きょう") === 2, String(recMod.moraCount("きょう")));
+check("长音算一拍", recMod.moraCount("コーヒー") === 4, String(recMod.moraCount("コーヒー")));
+check("促音算一拍", recMod.moraCount("がっこう") === 4, String(recMod.moraCount("がっこう")));
+const est = recMod.estimateMs("こんにちは", 0.85);
+check("录音预估时长合理", est >= 1800 && est <= 15000, String(est));
+check("语速越慢估时越长", recMod.estimateMs("ありがとうございます", 0.6) > recMod.estimateMs("ありがとうございます", 1.1));
+const peaks = recMod.peaksFromChannel(
+  Array.from({ length: 2000 }, (_, i) => Math.sin(i / 7) * (i % 3 ? 0.2 : 0.9)),
+  96
+);
+check("波形峰值个数正确", peaks.length === 96, String(peaks.length));
+check("波形峰值归一化到 0~1", Math.max(...peaks) <= 1.0001 && Math.min(...peaks) >= 0 && Math.max(...peaks) > 0.9, String(Math.max(...peaks)));
+check("空音频返回零波形", recMod.peaksFromChannel([], 8).every((v) => v === 0));
+
+section("影子跟读进度");
+const shadowBefore = storeMod.shadowStats();
+storeMod.recordShadow("test:shadow:1", 3, "N5");
+const shadowAfter = storeMod.shadowStats();
+check("跟读句数累加", shadowAfter.total === shadowBefore.total + 1, `${shadowBefore.total} -> ${shadowAfter.total}`);
+check("今日跟读累加", shadowAfter.today === shadowBefore.today + 1, `${shadowBefore.today} -> ${shadowAfter.today}`);
+check("「很像」计数", shadowAfter.best3 === shadowBefore.best3 + 1, `${shadowBefore.best3} -> ${shadowAfter.best3}`);
+storeMod.recordShadow("test:shadow:1", 1, "N5");
+check(
+  "同一句只保留最好成绩",
+  storeMod.shadowStats().best3 === shadowAfter.best3 && storeMod.shadowStats().total === shadowAfter.total + 1,
+  JSON.stringify(storeMod.shadowStats())
+);
+
 /* ---------------- 7. 所有视图模块可加载 ---------------- */
 section("模块加载");
 const modules = [
   "../assets/js/app.js",
   "../assets/js/views/home.js",
   "../assets/js/views/quest.js",
+  "../assets/js/views/shadow.js",
   "../assets/js/views/kana.js",
   "../assets/js/views/quiz.js",
   "../assets/js/views/vocab.js",
@@ -345,6 +440,8 @@ const modules = [
   "../assets/js/views/stats.js",
   "../assets/js/sfx.js",
   "../assets/js/speech.js",
+  "../assets/js/shadow-data.js",
+  "../assets/js/recorder.js",
 ];
 for (const m of modules) {
   try {

@@ -53,7 +53,7 @@ export default async function mount(root) {
         return `
           <section class="kana-section">
             <h3>${group.label} <span class="tag">${cells.length} 音</span></h3>
-            <div class="kana-grid ${showRomaji ? "" : "hide-romaji"}" style="grid-template-columns:repeat(${cols}, minmax(0,1fr))">
+            <div class="kana-grid ${showRomaji ? "" : "hide-romaji"}" style="grid-template-columns:repeat(${cols}, minmax(0,1fr));max-width:${cols * 154}px">
               ${kept.join("")}
             </div>
           </section>`;

@@ -3,6 +3,7 @@ import { installSpeakHandler } from "./speech.js";
 const ROUTES = [
   { path: "home", label: "首页", load: () => import("./views/home.js") },
   { path: "quest", label: "闯关", load: () => import("./views/quest.js") },
+  { path: "shadow", label: "跟读", load: () => import("./views/shadow.js") },
   { path: "kana", label: "五十音", load: () => import("./views/kana.js") },
   { path: "quiz", label: "假名测验", load: () => import("./views/quiz.js") },
   { path: "vocab", label: "单词", load: () => import("./views/vocab.js") },
@@ -17,9 +18,63 @@ const nav = document.getElementById("nav");
 let cleanup = null;
 let currentToken = 0;
 
+/* ---------------- 深浅色主题 ---------------- */
+const THEME_KEY = "jnl:theme";
+
+function systemDark() {
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+}
+
+function applyTheme(mode) {
+  const root = document.documentElement;
+  if (mode === "dark" || mode === "light") root.dataset.theme = mode;
+  else delete root.dataset.theme;
+  const dark = mode === "dark" || (!mode && systemDark());
+  const btn = document.getElementById("theme");
+  if (btn) {
+    btn.textContent = dark ? "☀️" : "🌙";
+    btn.setAttribute("aria-label", dark ? "切换到浅色主题" : "切换到深色主题");
+    btn.title = dark ? "切换到浅色主题" : "切换到深色主题";
+  }
+  const meta = document.getElementById("theme-color");
+  if (meta) meta.setAttribute("content", dark ? "#14151a" : "#f7f5f1");
+}
+
+function initTheme() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem(THEME_KEY);
+  } catch {
+    /* 隐私模式忽略 */
+  }
+  // 方便截图 / 分享：?theme=dark
+  const forced = new URLSearchParams(location.search).get("theme");
+  const mode = forced === "dark" || forced === "light" ? forced : saved;
+  applyTheme(mode);
+  document.getElementById("theme")?.addEventListener("click", () => {
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : systemDark();
+    const next = dark ? "light" : "dark";
+    applyTheme(next);
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      /* 忽略 */
+    }
+  });
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+    if (!document.documentElement.dataset.theme) applyTheme(null);
+  });
+}
+
+/* ---------------- 路由 ---------------- */
 function renderNav(active) {
   nav.innerHTML = ROUTES.map(
-    (r) => `<a href="#/${r.path}" class="${r.path === active ? "active" : ""}">${r.label}</a>`
+    (r) =>
+      `<a href="#/${r.path}" class="${r.path === active ? "active" : ""}" ${
+        r.path === active ? 'aria-current="page"' : ""
+      }>${r.label}</a>`
   ).join("");
 }
 
@@ -68,6 +123,7 @@ async function route() {
   }
 }
 
+initTheme();
 installSpeakHandler(document);
 window.addEventListener("hashchange", route);
 if (!location.hash) location.replace("#/home");

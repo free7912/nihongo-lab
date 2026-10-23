@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>日本語ラボ · 日语学习</title>
-  <meta name="description" content="在线日语学习：五十音图、假名测验、JLPT N5–N1 单词与汉字闪卡复习、语法例句，进度保存在本地。">
+  <meta name="description" content="在线日语学习：五十音图、假名测验、JLPT N5–N1 单词与汉字闪卡复习、语法例句、影子跟读，进度保存在本地。">
+  <meta id="theme-color" name="theme-color" content="#f7f5f1">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>あ</text></svg>">
   <link rel="stylesheet" href="assets/css/style.css">
 </head>
@@ -13,12 +14,13 @@
     <div class="site-inner">
       <a class="brand" href="#/home">
         <span class="mark">あ</span>
-        <span>
+        <span class="brand-text">
           <b>日本語ラボ</b>
           <span>日语学习实验室</span>
         </span>
       </a>
-      <nav class="tabs" id="nav"></nav>
+      <nav class="tabs" id="nav" aria-label="主导航"></nav>
+      <button class="icon-btn theme-btn" id="theme" type="button" aria-label="切换主题" title="切换主题">🌙</button>
     </div>
   </header>
 
@@ -32,7 +34,7 @@
       （JMdict / KANJIDIC2 / Tatoeba，CC BY-SA 4.0）·
       <a href="ATTRIBUTION.md">数据来源与许可</a>
     </p>
-    <p>所有学习进度仅保存在你的浏览器本地，不会上传到任何服务器。</p>
+    <p>所有学习进度与录音都只留在你的浏览器本地，不会上传到任何服务器。</p>
   </footer>
 
   <script type="module" src="assets/js/app.js"></script>

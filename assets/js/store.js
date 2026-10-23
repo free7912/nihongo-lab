@@ -19,6 +19,7 @@ const DEFAULT = {
     listening: { seen: 0, correct: 0 },
     speaking: { seen: 0, correct: 0 },
   },
+  shadow: { items: {}, days: {} },   // 影子跟读：句子 -> { plays, best, level, last }；日期 -> 句数
 };
 
 function read() {
@@ -46,6 +47,10 @@ function read() {
         kanji: { seen: 0, correct: 0, ...(parsed.skills?.kanji || {}) },
         listening: { seen: 0, correct: 0, ...(parsed.skills?.listening || {}) },
         speaking: { seen: 0, correct: 0, ...(parsed.skills?.speaking || {}) },
+      },
+      shadow: {
+        items: parsed.shadow?.items || {},
+        days: parsed.shadow?.days || {},
       },
     };
   } catch {
@@ -91,7 +96,7 @@ export function today() {
 
 function bumpHistory(patch) {
   const day = today();
-  const cur = state.history[day] || { reviews: 0, correct: 0, quizzes: 0, quizCorrect: 0 };
+  const cur = state.history[day] || { reviews: 0, correct: 0, quizzes: 0, quizCorrect: 0, quests: 0, shadow: 0 };
   state.history[day] = { ...cur, ...patch(cur) };
 }
 
@@ -223,7 +228,7 @@ export function streak() {
     const p = (n) => String(n).padStart(2, "0");
     const key = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     const h = state.history[key];
-    const active = h && (h.reviews > 0 || h.quizzes > 0 || h.quests > 0);
+    const active = h && (h.reviews > 0 || h.quizzes > 0 || h.quests > 0 || (h.shadow || 0) > 0);
     if (active) {
       count += 1;
       d.setDate(d.getDate() - 1);
@@ -241,7 +246,7 @@ export function recentDays(n = 14) {
     const day = new Date(d.getTime() - i * DAY);
     const p = (x) => String(x).padStart(2, "0");
     const key = `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}`;
-    const h = state.history[key] || { reviews: 0, correct: 0, quizzes: 0, quizCorrect: 0, quests: 0 };
+    const h = state.history[key] || { reviews: 0, correct: 0, quizzes: 0, quizCorrect: 0, quests: 0, shadow: 0 };
     out.push({ key, label: `${day.getMonth() + 1}/${day.getDate()}`, ...h });
   }
   return out;
@@ -311,6 +316,42 @@ export function awardAchievement(id) {
 
 export function achievementList() {
   return Object.keys(state.quest.achievements);
+}
+
+/* ---------------- 影子跟读 ---------------- */
+
+/** 记一次跟读：stars = 3 很像 / 2 还行 / 1 不像 */
+export function recordShadow(id, stars, level) {
+  const day = today();
+  if (!state.shadow) state.shadow = { items: {}, days: {} };
+  const prev = state.shadow.items[id] || { plays: 0, best: 0, level, last: "" };
+  state.shadow.items[id] = {
+    plays: prev.plays + 1,
+    best: Math.max(prev.best || 0, Number(stars) || 0),
+    level: level || prev.level,
+    last: day,
+  };
+  state.shadow.days[day] = (state.shadow.days[day] || 0) + 1;
+  bumpHistory((h) => ({ shadow: (h.shadow || 0) + 1 }));
+  commit();
+  return state.shadow.items[id];
+}
+
+export function shadowStats(level) {
+  const sh = state.shadow || { items: {}, days: {} };
+  const entries = Object.entries(sh.items || {}).filter(([, v]) => !level || v.level === level);
+  const plays = entries.reduce((s, [, v]) => s + (v.plays || 0), 0);
+  const best3 = entries.filter(([, v]) => (v.best || 0) >= 3).length;
+  const stars = entries.reduce((s, [, v]) => s + (v.best || 0), 0);
+  return {
+    today: (sh.days || {})[today()] || 0,
+    total: plays,
+    sentences: entries.length,
+    best3,
+    stars,
+    avg: entries.length ? stars / entries.length : 0,
+    days: sh.days || {},
+  };
 }
 
 /* ---------------- 技能成长（全方位水平） ---------------- */

@@ -9,6 +9,7 @@ import {
   levelInfo,
   totalStars,
   skillStats,
+  shadowStats,
   overallScore,
   stageResult,
 } from "../store.js";
@@ -20,10 +21,13 @@ export default async function mount(root) {
   const st = getState();
   const kana = kanaStats();
   const days = recentDays(14);
-  const max = Math.max(1, ...days.map((d) => d.reviews + d.quizzes + (d.quests || 0)));
+  const activity = (d) => d.reviews + d.quizzes + (d.quests || 0) + (d.shadow || 0);
+  const max = Math.max(1, ...days.map(activity));
   const totalReviews = days.reduce((s, d) => s + d.reviews, 0);
   const totalQuizzes = days.reduce((s, d) => s + d.quizzes, 0);
   const totalQuests = days.reduce((s, d) => s + (d.quests || 0), 0);
+  const totalShadow = days.reduce((s, d) => s + (d.shadow || 0), 0);
+  const shadow = shadowStats();
   const allCards = cardStats();
   const info = levelInfo();
   const skills = skillStats();
@@ -70,19 +74,21 @@ export default async function mount(root) {
 
     <div class="grid cols-2">
       <div class="card">
-        <div class="card-head"><h3>最近 14 天</h3><span class="spacer"></span><span class="tag">复习 ${totalReviews} · 测验 ${totalQuizzes} · 闯关 ${totalQuests}</span></div>
-        <div class="bars">
+        <div class="card-head"><h3>最近 14 天</h3><span class="spacer"></span><span class="tag">复习 ${totalReviews} · 测验 ${totalQuizzes} · 闯关 ${totalQuests} · 跟读 ${totalShadow}</span></div>
+        ${
+          totalReviews + totalQuizzes + totalQuests + totalShadow
+            ? `<div class="bars">
           ${days
             .map(
-              (d, i) => `<div class="bar" style="height:${Math.round(
-                ((d.reviews + d.quizzes + (d.quests || 0)) / max) * 100
-              )}%"
-                title="${d.key}：复习 ${d.reviews} · 测验 ${d.quizzes} · 闯关 ${d.quests || 0}"><span>${
+              (d, i) => `<div class="bar" style="height:${Math.round((activity(d) / max) * 100)}%"
+                title="${d.key}：复习 ${d.reviews} · 测验 ${d.quizzes} · 闯关 ${d.quests || 0} · 跟读 ${d.shadow || 0}"><span>${
                   i % 2 === 0 ? d.label : ""
                 }</span></div>`
             )
             .join("")}
-        </div>
+        </div>`
+            : `<div class="bars-empty">最近两周还没有练习记录<br>随便做一关或跟读一句，图表就会长出来</div>`
+        }
       </div>
 
       <div class="card">
@@ -101,6 +107,19 @@ export default async function mount(root) {
             : ""
         }
       </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-head"><h3>影子跟读</h3><span class="spacer"></span><a class="btn sm ghost" href="#/shadow">去跟读</a></div>
+      <div class="grid cols-4">
+        <div class="stat"><div class="num">${shadow.today}</div><div class="lbl">今日句数</div></div>
+        <div class="stat"><div class="num">${shadow.total}</div><div class="lbl">累计跟读</div></div>
+        <div class="stat"><div class="num">${shadow.sentences}</div><div class="lbl">练过的句子</div></div>
+        <div class="stat"><div class="num">${shadow.best3}</div><div class="lbl">自评「很像」</div></div>
+      </div>
+      <p class="meta" style="color:var(--muted);margin-top:10px">
+        录音只存在内存里，刷新就没了；这里只统计「练了几句、几句像」。
+      </p>
     </div>
 
     <div class="card" style="margin-top:14px">

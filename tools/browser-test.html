@@ -219,6 +219,73 @@ paint();
 }
 paint();
 
+/* ---------------- 1c. 影子跟读：渲染 / 评分 / 换级 / 麦克风兜底 ---------------- */
+{
+  const box = document.createElement("div");
+  view.replaceChildren(box);
+  const { default: mountShadow } = await import("/assets/js/views/shadow.js");
+  const cleanup = await mountShadow(box);
+  await sleep(600);
+
+  check("跟读页有标题", t(box, ".sh-hero h1") === "影子跟读", t(box, ".sh-hero h1"));
+  check("跟读页有 5 个等级", box.querySelectorAll('[data-act="level"]').length === 5);
+  check("跟读页有三种素材来源", box.querySelectorAll('[data-act="source"]').length === 3);
+
+  const ja = t(box, ".sh-ja");
+  const kana = t(box, ".sh-reading");
+  const zh = t(box, ".sh-zh");
+  check("跟读页显示日语句子", /[ぁ-んァ-ヶ一-龥]/.test(ja) && ja.length >= 2, ja);
+  check("跟读页显示假名读法", /[ぁ-んァ-ヶー]/.test(kana), kana);
+  check("跟读页显示中文句义", /[\u4e00-\u9fff]|[0-9]/.test(zh), zh);
+  check("跟读页有波形画布", !!box.querySelector("canvas#sh-wave"));
+  check("跟读页有三档自评", box.querySelectorAll(".sh-rate").length === 3);
+  check("跟读页显示 1/10 进度", /1\s*\/\s*10/.test(t(box, ".sh-counter")), t(box, ".sh-counter"));
+
+  box.querySelector('[data-act="next"]').click();
+  await sleep(220);
+  check("可以跳到下一句", /2\s*\/\s*10/.test(t(box, ".sh-counter")), t(box, ".sh-counter"));
+
+  const before = JSON.parse(localStorage.getItem("jnl:v1")).shadow || { items: {}, days: {} };
+  const beforeCount = Object.values(before.items).reduce((s, v) => s + v.plays, 0);
+  box.querySelector('.sh-rate[data-value="3"]').click();
+  await sleep(300);
+  const after = JSON.parse(localStorage.getItem("jnl:v1")).shadow;
+  const afterCount = Object.values(after.items).reduce((s, v) => s + v.plays, 0);
+  check("评分会记录跟读进度", afterCount === beforeCount + 1, `${beforeCount} -> ${afterCount}`);
+  check("自评「很像」被记下", Object.values(after.items).some((v) => v.best === 3));
+  check("评分后自动跳下一句", /3\s*\/\s*10/.test(t(box, ".sh-counter")), t(box, ".sh-counter"));
+
+  box.querySelector('[data-act="hide"]').click();
+  await sleep(160);
+  check("可以遮住原文", !!box.querySelector(".sh-sentence.blurred"));
+  box.querySelector('[data-act="hide"]').click();
+  await sleep(120);
+  check("可以再显示原文", !box.querySelector(".sh-sentence.blurred"));
+
+  box.querySelector('[data-act="level"][data-value="N3"]').click();
+  await sleep(1000);
+  check("可以切换等级", t(box, ".sh-stage .badge") === "N3", t(box, ".sh-stage .badge"));
+  check("切级后重新从 1/10 开始", /1\s*\/\s*10/.test(t(box, ".sh-counter")), t(box, ".sh-counter"));
+
+  // 无头浏览器通常没有麦克风：必须优雅降级，而不是卡住或报错
+  box.querySelector('[data-act="mode"][data-value="overlap"]').click();
+  await sleep(200);
+  box.querySelector('[data-act="record"]').click();
+  await sleep(1600);
+  const status = t(box, "#sh-status");
+  check("没有麦克风时给出兜底提示", /麦克风|录音|计时/.test(status), status);
+  check("兜底后页面仍可操作", !!box.querySelector(".sh-rate"));
+
+  box.querySelector('[data-act="mode"][data-value="listen"]').click();
+  await sleep(220);
+  check("可以切到只听模式", (box.querySelector(".sh-mode.on")?.textContent || "").includes("只听"));
+  check("只听模式不计分", !box.querySelector(".sh-rate"), "评分按钮已隐藏");
+
+  if (typeof cleanup === "function") cleanup();
+  await sleep(200);
+}
+paint();
+
 /* ---------------- 2. 闯关：逐个关卡跑通 ---------------- */
 const choiceChecks = [];
 let voicePanelText = "";
